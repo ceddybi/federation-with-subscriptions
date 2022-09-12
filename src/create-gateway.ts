@@ -1,30 +1,31 @@
-import { makeExecutableSchema } from "@graphql-tools/schema";
-import { stitchSchemas } from "@graphql-tools/stitch";
-import { stitchingDirectives } from "@graphql-tools/stitching-directives";
 import {
   AsyncExecutor,
   observableToAsyncIterable,
   printSchemaWithDirectives,
 } from "@graphql-tools/utils";
-import { FilterRootFields, FilterTypes, wrapSchema } from "@graphql-tools/wrap";
-import { ApolloServerPluginDrainHttpServer } from "apollo-server-core";
-import { ExpressContext } from "apollo-server-express";
-import express, { Request } from "express";
+import { Context, SubscribeMessage, createClient } from "graphql-ws";
 import {
   ExecutionArgs,
-  getOperationAST,
   OperationTypeNode,
+  getOperationAST,
   print,
   printSchema,
 } from "graphql";
-import gql from "graphql-tag";
-import { Context, createClient, SubscribeMessage } from "graphql-ws";
-import { useServer } from "graphql-ws/lib/use/ws";
-import http from "http";
-import fetch from "node-fetch";
+import { FilterRootFields, FilterTypes, wrapSchema } from "@graphql-tools/wrap";
 import WebSocket, { WebSocketServer } from "ws";
+import express, { Request } from "express";
 
+import { ApolloServerPluginDrainHttpServer } from "apollo-server-core";
+import { ExpressContext } from "apollo-server-express";
 import { ExtendedApolloServer } from "./extended-apollo-server";
+import fetch from "node-fetch";
+import gql from "graphql-tag";
+import http from "http";
+import { introspectSchema } from "@graphql-tools/wrap";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import { stitchSchemas } from "@graphql-tools/stitch";
+import { stitchingDirectives } from "@graphql-tools/stitching-directives";
+import { useServer } from "graphql-ws/lib/use/ws";
 
 type Headers = Record<string, string | undefined | unknown>;
 
@@ -38,7 +39,7 @@ const createSchema = async (
   const { stitchingDirectivesTransformer } = stitchingDirectives();
 
   const remoteSchemas = await Promise.all(
-    microservices.map(async ({ endpoint }) => {
+    microservices.map(async ({ endpoint, introspection = false }) => {
       const httpExecutor: AsyncExecutor = async ({
         document,
         variables,
@@ -142,15 +143,23 @@ const createSchema = async (
         return httpExecutor(args);
       };
 
-      const sdlResponse: any = await httpExecutor({
-        document: gql`
-          {
-            _sdl
-          }
-        `,
-      });
+      let sdl = null;
 
-      const sdl = sdlResponse?.data?._sdl;
+      if (!introspection) {
+        const sdlResponse: any = await httpExecutor({
+          document: gql`
+            {
+              _sdl
+            }
+          `,
+        });
+
+        sdl = sdlResponse?.data?._sdl;
+      } else {
+        
+        const remoteSchema = await introspectSchema(httpExecutor);
+        sdl = printSchema(remoteSchema);
+      }
 
       if (!sdl) {
         throw new Error("microservice SDL could not be found!");
@@ -207,7 +216,7 @@ const createSchema = async (
 // eslint-disable-next-line @typescript-eslint/ban-types
 type CreateGatewayParameters = {
   port?: number;
-  microservices: { endpoint: string }[];
+  microservices: { endpoint: string; introspection?: boolean }[];
 
   onWebsocketMessage?: (message: WebSocket.RawData, context: any) => void;
   onWebsocketClose?: (context: any) => void;

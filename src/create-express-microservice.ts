@@ -1,17 +1,17 @@
-import { makeExecutableSchema } from "@graphql-tools/schema";
+import { Context, SubscribeMessage } from "graphql-ws";
 import {
   federationToStitchingSDL,
   stitchingDirectives,
 } from "@graphql-tools/stitching-directives";
+
+import { ExecutionArgs } from "graphql";
+import { ExpressContext } from "apollo-server-express";
+import { ExtendedApolloServer } from "./extended-apollo-server";
 import { IResolvers } from "@graphql-tools/utils";
 import { PluginDefinition } from "apollo-server-core";
-import { ExpressContext } from "apollo-server-express";
-import { ExecutionArgs } from "graphql";
-import { Context, SubscribeMessage } from "graphql-ws";
-import { useServer } from "graphql-ws/lib/use/ws";
 import { WebSocketServer } from "ws";
-
-import { ExtendedApolloServer } from "./extended-apollo-server";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import { useServer } from "graphql-ws/lib/use/ws";
 
 const createExecutableSchema = ({
   typeDefs,
@@ -32,6 +32,8 @@ const createExecutableSchema = ({
 
   const hasEntities = Boolean(stitchingSDL.match(/\n\s+_entities\(/));
 
+  // console.log("stitchingSDL", stitchingSDL);
+  
   const executableSchema = makeExecutableSchema({
     typeDefs: stitchingSDL,
     resolvers: [
